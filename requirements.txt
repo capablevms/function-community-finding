@@ -1,0 +1,2 @@
+python-igraph==0.8.3
+libclang==10.0.1.0 

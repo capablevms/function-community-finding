@@ -9,12 +9,73 @@ import igraph
 
 from igraph import Graph
 
-from clang.cindex import Index, CursorKind
+from clang.cindex import Index, CursorKind, TypeKind
 from clang import cindex
 
 from collections import Counter, deque
 from itertools import chain
 
+"""
+List all the headers from the folder.
+And formats them to be inserted in the newly generated c files.
+[ Works with lua only ]
+"""
+def get_headers(path): 
+    headers = []
+
+    for file in os.listdir(path):
+        if file.endswith(".h"):
+            if file == "ljumptab.h":
+                continue
+            if file == "ltests.h":
+                continue
+            headers.append(file)
+            
+    includes = """
+#include <time.h>
+#include <setjmp.h>
+#include <ctype.h>
+"""
+
+    for header in headers:
+        includes += "#include \"" + header + "\"\n"
+
+    return includes    
+
+"""
+Use the libclang extents to read from a file opend with 'r'
+"""
+def file_read_extent(file, extent):
+    file.seek(extent.start.offset)
+    return file.read(extent.end.offset - extent.start.offset)
+"""
+Common printing information about a decl.
+"""
+def print_decl(decl):
+    print(decl.displayname, decl.extent.start.line)
+
+
+"""
+Get the type declaration from things taht look like variables.
+It works on variables and function parameters.
+"""
+def variable_to_type(variable):
+    if variable.type.kind == TypeKind.POINTER:
+        decl = variable.type.get_pointee().get_declaration()
+        if decl.type.kind == TypeKind.TYPEDEF:
+            if decl.extent.start.line == 0:
+                print(variable.displayname, variable.extent.start.line)
+            return decl
+        else:
+            return None
+    elif variable.type.kind == TypeKind.TYPEDEF:
+        decl = variable.type.get_declaration()
+        if decl.extent.start.line == 0:
+            print(variable.displayname, variable.extent.start.line)
+        return decl
+    elif variable.type.kind == TypeKind.RECORD:
+        raise Exception("Error: " + str(variable.extent.start.line) + " " + variable )
+    
 """
 Extract all the declarations from a translation unit.
 """
@@ -64,12 +125,12 @@ def get_tus(index, path):
             # this works on the assumption that all includes are at the start of the file.
             # calculating the split line gives information about which things are defined in
             # headers and which are defined in in the c file.
-            with open(path + "/" + file, "r") as f:
+            with open(os.path.join(path, file), "r") as f:
                 for current_line_no, line in enumerate(f):
                     match = re.match("# [0-9]+ \"" + file + "\" 2", line)
                     if match:
                         split_line = current_line_no
-            yield (split_line, index.parse(path + "/" + file))
+            yield (split_line, index.parse(os.path.join(path, file)))
     
 def generate_graph(path):
     definitions = {}
